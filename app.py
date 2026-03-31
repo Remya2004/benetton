@@ -488,18 +488,114 @@ with cap_tab1:
             use_container_width=True, hide_index=True)
 
 with cap_tab2:
-    st.caption("Pan India event-based capsule — styles with strong all-India performance")
+    st.caption("Pan India cultural capsule — styles aligned to global pop culture moments happening in 2026-2027")
+
     EVENTS = {
-        "Formula 1 Indian Grand Prix 2027":  "Speed, sport, urban streetwear — graphic tees, bold prints, athleisure",
-        "ICC Cricket World Cup 2027":         "National pride — patriotic prints, sport-casual, performance wear",
-        "IPL Season 2027":                    "City fandom, casual sport — team-inspired casuals, comfort fits",
-        "Diwali 2027 (Pan India)":            "All-India gifting — occasion wear, bright festive colours",
-        "Summer Vacation 2027":               "School holidays — fun prints, lightweight fabrics, active casuals",
+
+        "🎪 Coachella 2027": {
+            "tag":       "Music Festival",
+            "when":      "April 2027 — Indio, California (global cultural influence)",
+            "direction": "Festival boho-meets-streetwear — tie-dye, crochet, colour block, fringe details, relaxed silhouettes, layered looks. Think free-spirited desert energy translated into kidswear.",
+            "key_cats":  ["TEE", "DENIM", "DRESS", "KNIT BOTTOM"],
+            "key_fits":  ["Boxy / Oversized", "Flare / Wide Leg", "Tiered / Flared Dress", "Cropped"],
+            "colours":   "🎨 Dusty rose · Sage green · Off-white · Sun yellow · Earthy terracotta",
+            "mood":      "Free-spirited · Expressive · Desert festival energy",
+            "why_now":   "Coachella fashion drives global kidswear trends every April — Indian premium parents follow festival fashion closely",
+        },
+
+        "😈 Devil Wears Benetton": {
+            "tag":       "Movie Release",
+            "when":      "Devil Wears Prada 2 releases 2026 — massive fashion cultural moment",
+            "direction": "High-fashion editorial kidswear — sharp tailoring, monochrome power dressing, bold colour pop, statement pieces. The runway comes to the playground. Benetton's Italian fashion DNA perfectly positions this capsule.",
+            "key_cats":  ["JACKET", "WOVEN TOP", "DENIM", "DRESS"],
+            "key_fits":  ["Front Closed", "Shift Dress", "Straight Fit", "Resort Shirt"],
+            "colours":   "🎨 All black · Crisp white · Cobalt blue · Fire red · Camel",
+            "mood":      "Polished · Confident · Fashion-editor energy — kids who know what's IN",
+            "why_now":   "The sequel to an iconic fashion film will dominate fashion conversations globally. Benetton's Italian heritage makes this capsule authentic and ownable.",
+        },
+
+        "🌸 Bridgerton Season 4": {
+            "tag":       "Netflix Series",
+            "when":      "Releasing 2026 on Netflix — one of the most-watched shows globally",
+            "direction": "Regencycore meets modern kids fashion — floral prints, puff sleeves, soft embellishments, feminine silhouettes, pastel palette. Think garden party dressing with a contemporary twist.",
+            "key_cats":  ["DRESS", "WOVEN TOP", "SHIRT", "KNIT BOTTOM"],
+            "key_fits":  ["Tiered / Flared Dress", "Pleated Dress", "Embellished Shirt", "Smocked Dress"],
+            "colours":   "🎨 Blush pink · Powder blue · Lavender · Mint green · Ivory",
+            "mood":      "Romantic · Soft · Dreamy — garden party meets high society",
+            "why_now":   "Bridgerton drives massive spikes in floral and pastel kidswear sales every season it drops. Parents actively look for inspired pieces.",
+        },
+
+        "🖤 Wednesday Season 2": {
+            "tag":       "Netflix Series",
+            "when":      "Confirmed for 2026 — Netflix's most-watched English series ever",
+            "direction": "Dark academia meets gothic casual kidswear — monochrome dominance, classic stripes, structural silhouettes, deadpan cool. Black and white becomes the most stylish non-colour palette of the season.",
+            "key_cats":  ["TEE", "SWEATSHIRT", "DENIM", "JACKET"],
+            "key_fits":  ["Regular Tee", "Crew Neck", "Straight Fit", "Front Closed"],
+            "colours":   "🎨 Black · White · Charcoal grey · Deep burgundy · Forest green",
+            "mood":      "Deadpan · Moody · Effortlessly cool — the anti-trend trend",
+            "why_now":   "Wednesday Season 1 created a huge kidswear moment globally. Season 2 will be even bigger. Dark academic dressing for kids is a proven commercial opportunity.",
+        },
+
+        "⚓ One Piece Live Action Season 2": {
+            "tag":       "Netflix Series",
+            "when":      "Netflix 2026 — anime adaptation with massive global youth following",
+            "direction": "Adventure, nautical, anime-inspired kidswear — bold graphic prints, iconic motifs, relaxed fits, primary colour energy. Streetwear meets the Grand Line.",
+            "key_cats":  ["TEE", "SHIRT", "DENIM", "KNIT BOTTOM"],
+            "key_fits":  ["Boxy / Oversized", "Printed Shirt", "Cargo", "Regular Tee"],
+            "colours":   "🎨 Red · Navy · Golden yellow · Ocean blue · Stark white",
+            "mood":      "Bold · Adventurous · Fun — anime fandom meets street style",
+            "why_now":   "One Piece Live Action Season 1 was Netflix's most-watched show in 2023. Anime-inspired fashion is the biggest youth fashion trend of 2025-27. Huge opportunity for graphic tees and prints.",
+        },
+
+        "🎵 Tomorrowland 2027": {
+            "tag":       "Music Festival",
+            "when":      "July 2027 — Belgium. World's biggest electronic music festival",
+            "direction": "Festival electronic kidswear — neon accents, holographic details, colour blocking, futuristic fabrications, athletic silhouettes, statement graphic energy. Where music meets fashion at maximum volume.",
+            "key_cats":  ["TEE", "DENIM", "KNIT BOTTOM", "JACKET"],
+            "key_fits":  ["Boxy / Oversized", "Jogger / Pull On", "Shorts", "Padded / Puffer"],
+            "colours":   "🎨 Electric blue · Neon green · Hot pink · UV white · Metallic silver",
+            "mood":      "High energy · Euphoric · Rave-meets-streetwear",
+            "why_now":   "Electronic festival fashion influences premium kidswear globally every summer. Indian premium parents travelling to Europe for summer bring back this aesthetic — and want their kids to wear it.",
+        },
+
     }
-    selected_event = st.selectbox("🎯 Select Upcoming Event", list(EVENTS.keys()))
-    st.info(f"👟 **Style Direction:** {EVENTS[selected_event]}")
+
+    # ── EVENT SELECTOR ───────────────────
+    selected_event = st.selectbox(
+        "🎯 Select Cultural Moment",
+        list(EVENTS.keys()),
+        help="Each capsule is built around styles from your data that best align with this cultural moment"
+    )
+
+    ev = EVENTS[selected_event]
+
+    # Event header card
+    st.markdown(f"""
+    <div style="background:#21262d; border:1px solid #30363d; border-radius:10px; padding:18px; margin:10px 0;">
+        <span style="background:#00CC96; color:#000; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;">
+            {ev['tag']}
+        </span>
+        <span style="margin-left:10px; color:#8b949e; font-size:13px;">{ev['when']}</span>
+        <p style="margin:12px 0 6px 0; color:#f0f6fc; font-size:15px;">{ev['direction']}</p>
+        <p style="margin:4px 0; font-size:13px;">{ev['colours']}</p>
+        <p style="margin:4px 0; color:#8b949e; font-size:13px;">💫 Mood: {ev['mood']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="insight-box">
+    📊 <b>Why this capsule makes commercial sense:</b> {ev['why_now']}
+    </div>""", unsafe_allow_html=True)
+
+    ec1, ec2 = st.columns(2)
+    with ec1:
+        st.markdown(f"**👕 Priority Categories:** {' · '.join(ev['key_cats'])}")
+    with ec2:
+        st.markdown(f"**✂️ Key Silhouettes:** {' · '.join(ev['key_fits'])}")
+
     num_pan = st.slider("Styles in Pan India Capsule", 5, 30, 20, key="pan_size")
 
+    # ── BUILD PAN INDIA MATRIX ────────────
     all_mask = (
         df["CAT"].isin(selected_cats) &
         (df["MRP/ UNIT"] >= price_range[0]) &
@@ -517,40 +613,82 @@ with cap_tab2:
         Total_Demand=("ORDER QUANTITY","sum"),
         Avg_MRP=("MRP/ UNIT","mean"),
     ).reset_index()
+
+    if "FIT_TYPE" in all_rdf.columns:
+        fit_map = all_rdf.groupby(["CAT","DES"])["FIT_TYPE"].first().reset_index()
+        pan_matrix = pan_matrix.merge(fit_map, on=["CAT","DES"], how="left")
+
+    # Base score
     pan_matrix["Pan_India_Score"] = (
         pan_matrix["Avg_STR"] * pan_matrix["Regions_Present"]
     ).round(1)
+
+    # Boost event-relevant categories +20%
+    key_cats = ev.get("key_cats", [])
+    key_fits = ev.get("key_fits", [])
+    if key_cats:
+        cat_boost = pan_matrix["CAT"].isin([c.upper() for c in key_cats])
+        pan_matrix.loc[cat_boost, "Pan_India_Score"] *= 1.2
+
+    # Boost event-relevant fits +15%
+    if key_fits and "FIT_TYPE" in pan_matrix.columns:
+        fit_boost = pan_matrix["FIT_TYPE"].isin(key_fits)
+        pan_matrix.loc[fit_boost, "Pan_India_Score"] *= 1.15
+
+    pan_matrix["Pan_India_Score"] = pan_matrix["Pan_India_Score"].round(1)
+    pan_matrix["Event Relevance"] = pan_matrix["CAT"].isin(
+        [c.upper() for c in key_cats]
+    ).map({True: "✅ Event Aligned", False: "⚪ General"})
+
     pan_cap = pan_matrix.sort_values("Pan_India_Score", ascending=False).head(num_pan)
 
     if not pan_cap.empty:
+
+        # Chart
         fig_pan = px.bar(
             pan_cap.sort_values("Pan_India_Score", ascending=True),
-            x="Pan_India_Score", y="DES", color="Regions_Present",
-            orientation="h", color_continuous_scale="Blues",
+            x="Pan_India_Score", y="DES",
+            color="Event Relevance",
+            orientation="h",
+            color_discrete_map={
+                "✅ Event Aligned": "#00CC96",
+                "⚪ General":       "#636EFA"
+            },
             template="plotly_dark",
-            title=f"Pan India Capsule for '{selected_event}'",
-            labels={"DES":"Style","Pan_India_Score":"Pan India Score","Regions_Present":"Regions"}
+            title=f"Pan India Capsule — {selected_event}",
+            labels={"DES":"Style","Pan_India_Score":"Pan India Score","Event Relevance":"Relevance"}
         )
         fig_pan.update_layout(yaxis={"categoryorder":"total ascending"})
         st.plotly_chart(fig_pan, use_container_width=True)
-        st.caption("Pan India Score = Avg STR % × Regions where style sold. Higher = more universally strong.")
+        st.caption("🟢 Green = directly aligned to this event's style direction (score boosted). 🔵 Blue = strong all-India performers included for balance.")
 
-        pi1,pi2,pi3 = st.columns(3)
-        pi1.metric("Capsule Styles",      len(pan_cap))
-        pi2.metric("Avg STR %",           f"{pan_cap['Avg_STR'].mean():.1f}%")
-        pi3.metric("Avg Regions Present", f"{pan_cap['Regions_Present'].mean():.1f} / {df['REGION'].nunique()}")
+        # KPIs
+        pi1, pi2, pi3, pi4 = st.columns(4)
+        pi1.metric("Capsule Styles",       len(pan_cap))
+        pi2.metric("Avg STR %",            f"{pan_cap['Avg_STR'].mean():.1f}%")
+        pi3.metric("Avg Regions Present",  f"{pan_cap['Regions_Present'].mean():.1f} / {df['REGION'].nunique()}")
+        pi4.metric("Event Aligned Styles", len(pan_cap[pan_cap["Event Relevance"] == "✅ Event Aligned"]))
 
-        st.dataframe(pan_cap[[
-            "CAT","DES","GENDER","Regions_Present","Avg_STR","Avg_MRP","Pan_India_Score"
-        ]].rename(columns={
-            "Regions_Present":"Regions","Avg_STR":"Avg STR %",
-            "Avg_MRP":"Avg MRP (₹)","Pan_India_Score":"Pan India Score"
-        }),
-        column_config={
-            "Avg STR %": st.column_config.ProgressColumn("Avg STR %", format="%.1f%%", min_value=0, max_value=100),
-            "Avg MRP (₹)": st.column_config.NumberColumn("MRP", format="₹%d"),
-        },
-        use_container_width=True, hide_index=True)
+        # Table
+        show_pan = ["CAT","DES","GENDER","Regions_Present","Avg_STR","Avg_MRP","Pan_India_Score","Event Relevance"]
+        if "FIT_TYPE" in pan_cap.columns:
+            show_pan.insert(4, "FIT_TYPE")
+
+        st.dataframe(
+            pan_cap[show_pan].rename(columns={
+                "Regions_Present": "Regions",
+                "Avg_STR":         "Avg STR %",
+                "Avg_MRP":         "Avg MRP (₹)",
+                "Pan_India_Score": "Pan India Score",
+                "FIT_TYPE":        "Fit Type",
+            }),
+            column_config={
+                "Avg STR %":      st.column_config.ProgressColumn("Avg STR %", format="%.1f%%", min_value=0, max_value=100),
+                "Avg MRP (₹)":    st.column_config.NumberColumn("MRP", format="₹%d"),
+                "Pan India Score":st.column_config.NumberColumn("Score", format="%.1f"),
+            },
+            use_container_width=True, hide_index=True
+        )
 
 # ── EXPORT ───────────────────────────────
 st.divider()
