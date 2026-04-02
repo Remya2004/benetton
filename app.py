@@ -247,7 +247,15 @@ with st.sidebar:
 
     st.divider()
     st.markdown('<p style="font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;">BUYING LOGIC</p>', unsafe_allow_html=True)
-    buffer_growth = st.slider("Base Growth Factor", 1.0, 2.5, 1.2, 0.1, help="STR≥80% → +0.3 | 50–80% → base | 30–50% → flat | <30% → 0.7x cut")
+    st.markdown("""<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:12px 14px;font-size:12px;color:rgba(255,255,255,0.85);line-height:1.9;">
+        <b style="color:#FFFFFF;">STR-Based Growth Logic</b><br>
+        🟢 STR ≥ 70% &nbsp;→&nbsp; <b>×1.4</b> (bestseller)<br>
+        🟡 STR 60–70% → <b>×1.2</b> (strong)<br>
+        🟠 STR 50–60% → <b>×1.1</b> (healthy)<br>
+        🔵 STR 40–50% → <b>×1.0</b> (hold flat)<br>
+        🔴 STR &lt; 40% &nbsp;&nbsp;→&nbsp; <b>×0.9</b> (reduce)<br>
+        <span style="color:rgba(255,255,255,0.5);font-size:11px;">Core & basic articles only</span>
+    </div>""", unsafe_allow_html=True)
     min_buy_qty = st.number_input("Min Buy Floor (units)", value=5, min_value=0)
 
     st.divider()
@@ -298,12 +306,28 @@ matrix["STR %"] = 0.0
 valid = matrix["NET RECD"] > 0
 matrix.loc[valid, "STR %"] = (matrix["SOLD QTY"] / matrix["NET RECD"] * 100).clip(upper=100.0).round(1)
 
-def smart_buy(row, growth, min_qty):
-    s,q = row["STR %"], row["ORDER QUANTITY"]
-    f = growth+0.3 if s>=80 else (growth if s>=50 else (1.0 if s>=30 else 0.7))
-    return max(round(q*f), min_qty)
+def smart_buy(row, min_qty):
+    s    = row["STR %"]
+    recd = row["NET RECD"]   # units that actually hit the shop floor — the true baseline
+    # Growth factor applied to NET RECD (not order qty, not sold qty)
+    # e.g. NET RECD=1000, STR=75% → buy 1000 × 1.4 = 1400 units next season
+    # 1.4 = 40% MORE than last season's floor stock
+    if   s >= 70: f = 1.4   # bestseller — grow aggressively
+    elif s >= 60: f = 1.2   # strong — grow 20%
+    elif s >= 50: f = 1.1   # healthy — grow 10%
+    elif s >= 40: f = 1.0   # mediocre — flat repeat
+    else:         f = 0.9   # poor — reduce 10%
+    return max(round(recd * f), min_qty)
 
-matrix["PROPOSED_BUY"] = matrix.apply(lambda r: smart_buy(r, buffer_growth, min_buy_qty), axis=1)
+# Apply smart_buy to ALL articles — STR tiers handle reduction automatically
+# CORE_FLAG is kept as a display/filter column but does NOT gate the buy qty
+matrix["PROPOSED_BUY"] = matrix.apply(lambda r: smart_buy(r, min_buy_qty), axis=1)
+# Show what CORE_FLAG values exist in the data (for transparency)
+if "CORE_FLAG" in matrix.columns:
+    unique_flags = matrix["CORE_FLAG"].astype(str).str.upper().str.strip().unique().tolist()
+    # Mark which are core/basic for display purposes only
+    BASIC_CORE_FLAGS = ["CORE","BASIC","Y","YES","C","B","1","TRUE"]
+    matrix["IS_CORE"] = matrix["CORE_FLAG"].astype(str).str.upper().str.strip().isin(BASIC_CORE_FLAGS)
 dominant = matrix.groupby("DES")["ORDER QUANTITY"].transform("max")
 matrix_dedup = matrix[matrix["ORDER QUANTITY"] == dominant].drop_duplicates(subset=["DES","GENDER"])
 
@@ -456,12 +480,26 @@ with tab_option:
         ))
         st.plotly_chart(benetton_fig(fig_opt),use_container_width=True)
 
-        # Pie chart — full width below bar chart
-        st.markdown("**Buy Split by Fit Type**")
-        fig_pie_opt=px.pie(cat_fit,values="Rec_Buy",names="FIT_TYPE",hole=0.45,template="plotly_dark",color_discrete_sequence=BENETTON_COLORS)
-        fig_pie_opt.update_traces(textposition="outside",textinfo="percent+label",textfont=dict(color="#FFFFFF",size=12))
-        fig_pie_opt.update_layout(showlegend=False,height=480,margin=dict(t=30,b=30,l=80,r=80))
-        st.plotly_chart(benetton_fig(fig_pie_opt),use_container_width=True)
+        # Pie charts — split Boys vs Girls side by side
+        st.markdown("**Buy Split by Fit Type — Boys vs Girls**")
+        pie_genders = [g for g in ["BOYS","GIRLS"] if g in cat_fit["GENDER"].values]
+        if len(pie_genders) == 2:
+            pg1, pg2 = st.columns(2, gap="large")
+            pie_cols = [pg1, pg2]
+        else:
+            pie_cols = [st.container()]
+        for idx_g, gender_val in enumerate(pie_genders):
+            gfit = cat_fit[cat_fit["GENDER"] == gender_val]
+            fig_pie_g = px.pie(gfit, values="Rec_Buy", names="FIT_TYPE", hole=0.45,
+                title=f"{'👦 Boys' if gender_val=='BOYS' else '👧 Girls'} — Buy Split",
+                template="plotly_dark", color_discrete_sequence=BENETTON_COLORS)
+            fig_pie_g.update_traces(textposition="outside", textinfo="percent+label",
+                textfont=dict(color="#FFFFFF", size=11))
+            fig_pie_g.update_layout(showlegend=False, height=420,
+                margin=dict(t=50,b=30,l=60,r=60),
+                title_font=dict(color="#FFFFFF", size=14))
+            with pie_cols[idx_g]:
+                st.plotly_chart(benetton_fig(fig_pie_g), use_container_width=True)
         top_fit=cat_fit.sort_values("Avg_STR",ascending=False).iloc[0]
         insight_card(f"For <b>{selected_cat_opt}</b> in <b>{selected_region}</b> — <b>{top_fit['FIT_TYPE']}</b> is the strongest fit at <b>{top_fit['Avg_STR']:.1f}% avg STR</b>. Total rec. buy across all fits: <b>{int(total_rec):,} units</b>")
         st.markdown("<div style='height:8px'></div>",unsafe_allow_html=True)
@@ -510,9 +548,9 @@ with tab_price:
 # 11. CAPSULE PLANS
 # ═══════════════════════════════════════════════════════════════
 st.divider()
-section_header("◆","Curated Capsule Plans","Festive capsule by region · Pan India capsule aligned to global cultural moments")
+section_header("◆","Curated Capsule Plans","Festive replenishment · Cultural theme capsules with moodboards & design concepts")
 
-cap_tab1,cap_tab2=st.tabs(["  🎉  Festive Capsule (Regional)  ","  🌍  Pan India Capsule (Cultural)  "])
+cap_tab1,cap_tab2=st.tabs(["  🎉  Festive Capsule (Regional)  ","  🌍  Pan India Cultural Capsule  "])
 
 with cap_tab1:
     st.markdown("<div style='height:12px'></div>",unsafe_allow_html=True)
@@ -522,72 +560,327 @@ with cap_tab1:
         <div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">{selected_region} FESTIVE CONTEXT</div>
         <div style="font-size:18px;font-weight:700;color:#FFFFFF;margin-bottom:6px;">{fest_name}</div>
         <div style="font-size:14px;color:rgba(255,255,255,0.8);">{fest_context}</div>
+        <div style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.55);">📦 Showing replenishable basics & core styles only — generic pieces that sell more during festive without needing a theme-specific design</div>
     </div>""",unsafe_allow_html=True)
-    num_festive=st.slider("Styles in Festive Capsule",5,30,15,key="fest_size")
-    festive_cap=matrix_dedup.sort_values("STR %",ascending=False).head(num_festive)
+
+    # Replenishable = STR >= 50% (CORE_FLAG not used as hard gate — STR is the signal)
+    replen = matrix_dedup[matrix_dedup["STR %"] >= 50].copy().sort_values("STR %", ascending=False)
+
+    num_festive = st.slider("Replenishment Styles to Show", 5, 30, 15, key="fest_size")
+    festive_cap = replen.head(num_festive)
+
     if not festive_cap.empty:
-        fig_fest=px.bar(festive_cap,x="STR %",y="DES",color="CAT",orientation="h",template="plotly_dark",range_x=[0,100],color_discrete_sequence=BENETTON_COLORS,labels={"DES":"","STR %":"Sell-Through %"})
-        fig_fest.update_layout(yaxis={"categoryorder":"total ascending"})
-        fig_fest.add_vline(x=50,line_dash="dash",line_color="#FFD700",annotation_text="50% benchmark",annotation_font_color="#FFD700")
-        st.plotly_chart(benetton_fig(fig_fest),use_container_width=True)
-        fc1,fc2,fc3=st.columns(3)
-        fc1.metric("Capsule Styles",len(festive_cap))
-        fc2.metric("Avg STR %",f"{festive_cap['STR %'].mean():.1f}%")
-        fc3.metric("Rec. Buy (units)",f"{int(festive_cap['PROPOSED_BUY'].sum()):,}")
-        show_f=["CAT","DES","GENDER","STR %","MRP/ UNIT","PRICE BAND","PROPOSED_BUY"]
+        st.markdown("**🔄 Replenishment Chart — Styles to Stock Up During Festive**")
+        st.caption("Only core/basic articles with STR ≥ 50% — these are the safe bets to replenish during festive peaks")
+
+        # Replenishment uplift — festive gets +20% on top of proposed buy
+        festive_cap = festive_cap.copy()
+        festive_cap["FESTIVE_REPLEN_QTY"] = (festive_cap["PROPOSED_BUY"] * 1.20).round(0).astype(int)
+        festive_cap["UPLIFT_UNITS"] = festive_cap["FESTIVE_REPLEN_QTY"] - festive_cap["PROPOSED_BUY"]
+
+        fig_replen = px.bar(
+            festive_cap.sort_values("FESTIVE_REPLEN_QTY", ascending=True),
+            x=["PROPOSED_BUY","UPLIFT_UNITS"], y="DES", orientation="h",
+            template="plotly_dark", barmode="stack",
+            color_discrete_map={"PROPOSED_BUY":"rgba(255,255,255,0.5)","UPLIFT_UNITS":"#FFD700"},
+            labels={"DES":"","value":"Units","variable":""}
+        )
+        fig_replen.update_layout(
+            yaxis={"categoryorder":"total ascending"},
+            legend=dict(orientation="h", y=1.05,
+                title_text="",
+                itemsizing="constant"
+            )
+        )
+        newnames = {"PROPOSED_BUY":"Base SS27 Buy","UPLIFT_UNITS":"Festive Uplift (+20%)"}
+        fig_replen.for_each_trace(lambda t: t.update(name=newnames.get(t.name, t.name)))
+        st.plotly_chart(benetton_fig(fig_replen), use_container_width=True)
+
+        fc1,fc2,fc3,fc4 = st.columns(4)
+        fc1.metric("Replen Styles", len(festive_cap))
+        fc2.metric("Avg STR %", f"{festive_cap['STR %'].mean():.1f}%")
+        fc3.metric("Base Buy", f"{int(festive_cap['PROPOSED_BUY'].sum()):,}")
+        fc4.metric("With Festive Uplift", f"{int(festive_cap['FESTIVE_REPLEN_QTY'].sum()):,}")
+
+        show_f=["CAT","DES","GENDER","STR %","MRP/ UNIT","PROPOSED_BUY","FESTIVE_REPLEN_QTY","UPLIFT_UNITS"]
         if "FIT_TYPE" in festive_cap.columns: show_f.insert(4,"FIT_TYPE")
-        st.dataframe(festive_cap[show_f].sort_values("STR %",ascending=False),
-            column_config={"STR %":st.column_config.ProgressColumn("STR %",format="%.1f%%",min_value=0,max_value=100),"MRP/ UNIT":st.column_config.NumberColumn("MRP",format="₹%d"),"PROPOSED_BUY":st.column_config.NumberColumn("Rec. Buy ✅")},
+        st.dataframe(festive_cap[[c for c in show_f if c in festive_cap.columns]].sort_values("STR %",ascending=False),
+            column_config={
+                "STR %":st.column_config.ProgressColumn("STR %",format="%.1f%%",min_value=0,max_value=100),
+                "MRP/ UNIT":st.column_config.NumberColumn("MRP",format="₹%d"),
+                "PROPOSED_BUY":st.column_config.NumberColumn("Base Buy"),
+                "FESTIVE_REPLEN_QTY":st.column_config.NumberColumn("Festive Qty ✅",format="%d"),
+                "UPLIFT_UNITS":st.column_config.NumberColumn("+Uplift Units",format="%d"),
+            },
             use_container_width=True,hide_index=True)
+    else:
+        warning_card("No replenishable core/basic styles found with STR ≥ 50% under current filters.")
 
 with cap_tab2:
     st.markdown("<div style='height:12px'></div>",unsafe_allow_html=True)
-    st.caption("Styles with strong all-India performance, weighted by alignment to the selected cultural moment")
-    EVENTS={
-        "🎪 Coachella 2027":{"tag":"Music Festival","when":"April 2027 — Indio, California (global cultural influence)","direction":"Festival boho-meets-streetwear — tie-dye, crochet, colour block, relaxed silhouettes, layered looks. Free-spirited desert energy translated into kidswear.","key_cats":["TEE","DENIM","DRESS","KNIT BOTTOM"],"key_fits":["Boxy / Oversized","Flare / Wide Leg","Tiered / Flared Dress","Cropped"],"colours":"Dusty rose · Sage green · Off-white · Sun yellow · Earthy terracotta","mood":"Free-spirited · Expressive · Desert festival energy","why_now":"Coachella fashion drives global kidswear trends every April. Indian premium parents follow festival fashion closely — this capsule is commercially validated annually."},
-        "😈 Devil Wears Benetton":{"tag":"Movie Release","when":"Devil Wears Prada 2 releases 2026 — global fashion cultural moment","direction":"High-fashion editorial kidswear — sharp tailoring, monochrome power dressing, bold colour pop, statement pieces. The runway comes to the playground. Benetton's Italian fashion DNA makes this uniquely ownable.","key_cats":["JACKET","WOVEN TOP","DENIM","DRESS"],"key_fits":["Front Closed","Shift Dress","Straight Fit","Resort Shirt"],"colours":"All black · Crisp white · Cobalt blue · Fire red · Camel","mood":"Polished · Confident · Fashion-editor energy","why_now":"The sequel to an iconic fashion film will dominate global fashion conversations. Benetton's Italian heritage makes this authentic and impossible for competitors to own."},
-        "🌸 Bridgerton Season 4":{"tag":"Netflix Series","when":"Releasing 2026 on Netflix — one of the most-watched shows globally","direction":"Regencycore meets modern kidswear — floral prints, puff sleeves, soft embellishments, feminine silhouettes, pastel palette. Garden party dressing with a contemporary twist.","key_cats":["DRESS","WOVEN TOP","SHIRT","KNIT BOTTOM"],"key_fits":["Tiered / Flared Dress","Pleated Dress","Embellished Shirt","Smocked Dress"],"colours":"Blush pink · Powder blue · Lavender · Mint green · Ivory","mood":"Romantic · Soft · Dreamy — garden party meets high society","why_now":"Bridgerton drives measurable spikes in floral and pastel kidswear sales every season it drops. Parents actively seek inspired pieces during the release window."},
-        "🖤 Wednesday Season 2":{"tag":"Netflix Series","when":"Confirmed 2026 — Netflix's most-watched English language series ever","direction":"Dark academia meets gothic casual kidswear — monochrome dominance, classic stripes, structural silhouettes, deadpan cool. Black and white becomes the most stylish palette of the season.","key_cats":["TEE","SWEATSHIRT","DENIM","JACKET"],"key_fits":["Regular Tee","Crew Neck","Straight Fit","Front Closed"],"colours":"Black · White · Charcoal grey · Deep burgundy · Forest green","mood":"Deadpan · Moody · Effortlessly cool — the anti-trend trend","why_now":"Wednesday Season 1 created a documented kidswear buying surge globally. Season 2 will be larger. Dark academic dressing for kids is a proven and growing commercial segment."},
-        "⚓ One Piece Live Action S2":{"tag":"Netflix Series","when":"Netflix 2026 — anime adaptation with massive global youth following","direction":"Adventure, nautical, anime-inspired kidswear — bold graphic prints, iconic motifs, relaxed fits, primary colour energy. Streetwear meets the Grand Line.","key_cats":["TEE","SHIRT","DENIM","KNIT BOTTOM"],"key_fits":["Boxy / Oversized","Printed Shirt","Cargo","Regular Tee"],"colours":"Red · Navy · Golden yellow · Ocean blue · Stark white","mood":"Bold · Adventurous · Fun — anime fandom meets street style","why_now":"One Piece S1 was Netflix's most-watched show globally in 2023. Anime-inspired fashion is the single biggest youth fashion trend of 2025–27."},
-        "🎵 Tomorrowland 2027":{"tag":"Music Festival","when":"July 2027 — Belgium. World's biggest electronic music festival","direction":"Festival electronic kidswear — neon accents, colour blocking, futuristic fabrications, athletic silhouettes, statement graphic energy. Where music meets fashion at maximum volume.","key_cats":["TEE","DENIM","KNIT BOTTOM","JACKET"],"key_fits":["Boxy / Oversized","Jogger / Pull On","Shorts","Padded / Puffer"],"colours":"Electric blue · Neon green · Hot pink · UV white · Metallic silver","mood":"High energy · Euphoric · Rave-meets-streetwear","why_now":"Festival fashion drives premium kidswear every summer. Indian premium parents travelling to Europe actively seek festival-inspired children's pieces."},
+
+    EVENTS = {
+        "🏎️ F1 Season 2026 — Boys": {
+            "tag":"BOYS THEME","gender_target":"BOYS",
+            "when":"F1 World Championship 2026 — Full season March–November 2026",
+            "direction":"Speed, precision, colour blocking — racing stripes, number graphics, team colours, pit lane energy. The most global sport becomes the most wearable kids aesthetic of 2026.",
+            "key_cats":["TEE","WOVEN TOP","KNIT BOTTOM","JACKET"],
+            "key_fits":["Regular Tee","Boxy / Oversized","Cargo","Polo"],
+            "colours":"Ferrari Red · McLaren Papaya · Mercedes Silver · Red Bull Navy · Race White · Podium Gold",
+            "mood":"Fast · Precise · Team energy — pit lane meets playground",
+            "why_now":"F1 is the fastest growing sport among Indian youth. Drive to Survive has created a new generation of fans aged 6–14. No kidswear brand in India has owned this space yet.",
+            "replen_cats":["TEE","KNIT BOTTOM","WOVEN TOP"],
+            "replen_desc":"Solid red tees, navy polos, white basics, orange colour-block tops — the F1 team palette applied to core boys basics. Parents restock these throughout the full race calendar.",
+            "moodboard_colours":["#CC1100","#FF6B00","#C0C0C0","#001F5B","#FFFFFF","#FFD700"],
+            "moodboard_labels":["Ferrari Red","McLaren Papaya","Mercedes Silver","Red Bull Navy","Race White","Podium Gold"],
+            "print_direction":"Vertical racing stripes (bold 3–5cm width) · Chequered flag micro-repeat · Bold number graphics (1, 16, 44, 63) · Colour-block panels mimicking team liveries · Carbon fibre texture on collar/cuff · Tonal speed-line emboss",
+            "design_concepts":[
+                {"name":"Chequered Flag Tee","cat":"TEE","gender":"Boys","desc":"White base tee with bold chequered flag graphic across chest. Boxy fit, 100% cotton. The race day essential.","colour":"#FFFFFF","accent":"#1a1a1a"},
+                {"name":"Racing Stripe Polo","cat":"WOVEN TOP","gender":"Boys","desc":"Pique polo with bold red vertical stripe down front. Clean collar, short sleeve. Ferrari energy without the logo.","colour":"#CC1100","accent":"#FFFFFF"},
+                {"name":"Podium Cargo Short","cat":"KNIT BOTTOM","gender":"Boys","desc":"6-pocket cargo short in deep navy, orange tab detail at pocket. Mid-length. McLaren meets playground.","colour":"#001F5B","accent":"#FF6B00"},
+                {"name":"Pit Lane Bomber","cat":"JACKET","gender":"Boys","desc":"Zip bomber in silver with colour-block side panels in red. Lightweight. Number patch on sleeve.","colour":"#C0C0C0","accent":"#CC1100"},
+                {"name":"Number Graphic Tee","cat":"TEE","gender":"Boys","desc":"Oversized tee with bold race number 1 chest print in gold on navy. 100% cotton jersey.","colour":"#001F5B","accent":"#FFD700"},
+            ]
+        },
+        "⚓ One Piece Live Action S2 — Boys": {
+            "tag":"BOYS THEME","gender_target":"BOYS",
+            "when":"One Piece Live Action Season 2 — Netflix 2026",
+            "direction":"Nautical adventure, anime energy — anchor motifs, ocean colour palette, oversized silhouettes, bold graphic prints. The Grand Line comes to the streets.",
+            "key_cats":["TEE","SHIRT","DENIM","KNIT BOTTOM"],
+            "key_fits":["Boxy / Oversized","Printed Shirt","Cargo","Regular Tee"],
+            "colours":"Ocean Navy · Stark White · Anchor Red · Golden Yellow · Sea Teal · Rope Khaki",
+            "mood":"Bold · Adventurous · Free — anime fandom meets nautical street style",
+            "why_now":"One Piece S1 was Netflix most-watched globally in 2023. S2 will be bigger. Anime-inspired fashion is the single biggest youth trend of 2025–27 in India.",
+            "replen_cats":["TEE","SHIRT","KNIT BOTTOM"],
+            "replen_desc":"Solid navy tees, white oversized basics, khaki cargo shorts — the nautical colour palette in replenishable core boys styles. Spike during the Netflix release window.",
+            "moodboard_colours":["#001F5B","#FFFFFF","#CC1100","#FFD700","#2E8B6E","#8B7355"],
+            "moodboard_labels":["Ocean Navy","Stark White","Anchor Red","Golden Yellow","Sea Teal","Rope Khaki"],
+            "print_direction":"Anchor motifs (bold, chest placement) · Nautical rope knot prints · Wave micro-repeat · Jolly Roger skull (graphic, non-violent) · Tonal navy stripe · Map/compass graphic prints",
+            "design_concepts":[
+                {"name":"Anchor Graphic Tee","cat":"TEE","gender":"Boys","desc":"Bold anchor motif chest print, oversized fit, white base navy print. 100% soft cotton. The One Piece essential.","colour":"#FFFFFF","accent":"#001F5B"},
+                {"name":"Jolly Roger Tee","cat":"TEE","gender":"Boys","desc":"Graphic skull-and-crossbones in gold on black. Boxy fit. Anime energy, totally wearable.","colour":"#1a1a1a","accent":"#FFD700"},
+                {"name":"Navigator Denim","cat":"DENIM","gender":"Boys","desc":"Straight fit denim, medium wash, anchor embroidery on back pocket. Classic 5-pocket.","colour":"#4A6FA5","accent":"#FFD700"},
+                {"name":"Crew Cargo Short","cat":"KNIT BOTTOM","gender":"Boys","desc":"6-pocket cargo in khaki with red drawstring detail. Mid-length. Adventure-ready silhouette.","colour":"#8B7355","accent":"#CC1100"},
+                {"name":"Straw Hat Printed Shirt","cat":"SHIRT","gender":"Boys","desc":"Relaxed printed shirt in white with navy nautical map print. Open collar, short sleeve.","colour":"#FFFFFF","accent":"#001F5B"},
+            ]
+        },
+        "🖤 Wednesday Season 2 — Girls": {
+            "tag":"GIRLS THEME","gender_target":"GIRLS",
+            "when":"Wednesday Season 2 — Netflix 2026 (most-watched English series ever)",
+            "direction":"Dark academia gothic casual — monochrome dominance, classic stripes, structural silhouettes, deadpan cool. Black and white as the most stylish palette of the season.",
+            "key_cats":["TEE","SWEATSHIRT","DENIM","JACKET"],
+            "key_fits":["Regular Tee","Crew Neck","Straight Fit","Front Closed"],
+            "colours":"Wednesday Black · Stark White · Charcoal Grey · Deep Burgundy · Forest Green · Silver Chain",
+            "mood":"Deadpan · Moody · Effortlessly cool — the anti-trend trend",
+            "why_now":"Wednesday S1 created a documented kidswear buying surge globally. S2 will be larger. Dark academic dressing for girls is a proven, growing commercial segment in India.",
+            "replen_cats":["TEE","SWEATSHIRT","DENIM"],
+            "replen_desc":"Solid black tees, grey crew necks, dark denim, charcoal sweatshirts — the Wednesday palette in replenishable basics. No character print needed. The colour IS the costume.",
+            "moodboard_colours":["#1a1a1a","#FFFFFF","#4A4A4A","#6B1A1A","#1A3D2B","#C0C0C0"],
+            "moodboard_labels":["Wednesday Black","Stark White","Charcoal","Deep Burgundy","Forest Green","Silver"],
+            "print_direction":"Black & white vertical stripes · Gothic crest emboss · Barcode micro-print · Tonal charcoal melange · Subtle crosshatch texture · Silver chain-link print at hem",
+            "design_concepts":[
+                {"name":"Wednesday Stripe Tee","cat":"TEE","gender":"Girls","desc":"Classic B&W horizontal stripe, fitted tee, round neck. The Wednesday uniform — no character print needed.","colour":"#1a1a1a","accent":"#FFFFFF"},
+                {"name":"Dark Academia Sweat","cat":"SWEATSHIRT","gender":"Girls","desc":"Charcoal crew neck with subtle embossed gothic crest at chest. French terry. Moody but school-appropriate.","colour":"#4A4A4A","accent":"#C0C0C0"},
+                {"name":"Monochrome Pinafore","cat":"DRESS","gender":"Girls","desc":"Black pinafore dress over white puff-sleeve tee (coord set). Dark academia staple for any school day.","colour":"#1a1a1a","accent":"#FFFFFF"},
+                {"name":"Deadpan Straight Jean","cat":"DENIM","gender":"Girls","desc":"Dark wash straight leg jean, clean finish. The gothic-casual bottom that goes with everything black.","colour":"#2B3A52","accent":"#1a1a1a"},
+                {"name":"Crest Bomber","cat":"JACKET","gender":"Girls","desc":"Black zip bomber with silver crest embroidery on chest. Structured shoulder. Nevermore Academy energy.","colour":"#1a1a1a","accent":"#C0C0C0"},
+            ]
+        },
+        "😈 Devil Wears Benetton — Unisex": {
+            "tag":"UNISEX THEME","gender_target":"BOTH",
+            "when":"Devil Wears Prada 2 — Global Release 2026",
+            "direction":"High-fashion editorial kidswear — sharp tailoring, monochrome power dressing, bold colour pop. The runway comes to the playground. Benetton's Italian DNA makes this uniquely ownable.",
+            "key_cats":["JACKET","WOVEN TOP","DENIM","DRESS"],
+            "key_fits":["Front Closed","Shift Dress","Straight Fit","Resort Shirt"],
+            "colours":"Editorial Black · Runway White · Cobalt Blue · Power Red · Camel · Gold Detail",
+            "mood":"Polished · Confident · Fashion-editor energy — mini runway ready",
+            "why_now":"The sequel to the most iconic fashion film ever will dominate global conversations. Benetton's Italian heritage is the only kidswear brand that can own this narrative authentically.",
+            "replen_cats":["TEE","DENIM","JACKET"],
+            "replen_desc":"Solid black tees, crisp white shirts, classic dark denim — the building blocks of a power outfit. Replenish basics that work as editorial foundations during the film window.",
+            "moodboard_colours":["#0A0A0A","#F5F5F0","#1B3A8C","#CC1100","#C19A6B","#8B6914"],
+            "moodboard_labels":["Editorial Black","Runway White","Cobalt Blue","Power Red","Camel","Gold Detail"],
+            "print_direction":"Clean solid editorials (no print) · Cobalt colour-block · Pinstripe suiting fabric · Gold button hardware · Tonal texture panels · Italian woven structured fabric",
+            "design_concepts":[
+                {"name":"Power Blazer — Girls","cat":"JACKET","gender":"Girls","desc":"Fitted mini blazer in jet black with gold button detail. Fully lined. The statement piece of the season.","colour":"#0A0A0A","accent":"#8B6914"},
+                {"name":"Editor Shirt — Boys","cat":"WOVEN TOP","gender":"Boys","desc":"Crisp white poplin shirt with black contrast collar band. Slim fit. Effortlessly editorial.","colour":"#F5F5F0","accent":"#0A0A0A"},
+                {"name":"Runway Shift Dress","cat":"DRESS","gender":"Girls","desc":"Cobalt blue shift dress, structured fabric, knee length. The colour-pop hero of the collection.","colour":"#1B3A8C","accent":"#F5F5F0"},
+                {"name":"Dark Wash Straight Jean","cat":"DENIM","gender":"Unisex","desc":"Dark wash straight jean, clean finish, minimal branding. The editorial base layer for any look.","colour":"#2B3A52","accent":"#0A0A0A"},
+                {"name":"Camel Coord Set","cat":"JACKET","gender":"Girls","desc":"Camel tone blazer + straight trouser coord. Italian tailoring for tiny fashionistas.","colour":"#C19A6B","accent":"#0A0A0A"},
+            ]
+        },
+        "❄️ Frozen 3 — Girls": {
+            "tag":"GIRLS THEME","gender_target":"GIRLS",
+            "when":"Frozen 3 — Disney Theatrical Release 2026",
+            "direction":"Icy magic, pastel winter wonder, snow-dusted romance — ice blues, lavenders, frost whites. Feminine silhouettes with magical texture. Elsa energy without the costume.",
+            "key_cats":["DRESS","TEE","KNIT BOTTOM","SWEATSHIRT"],
+            "key_fits":["Tiered / Flared Dress","Smocked Dress","Regular Tee","Crew Neck"],
+            "colours":"Ice Blue · Lavender Frost · Snow White · Powder Pink · Crystal · Midnight Winter",
+            "mood":"Magical · Dreamy · Icy wonder — let it go, let it glow",
+            "why_now":"Frozen is Disney highest-grossing animated franchise ever. Frozen 3 will be the biggest kids film of 2026. Every girl aged 3-12 is the target. Parents will seek inspired not licensed pieces.",
+            "replen_cats":["DRESS","TEE","KNIT BOTTOM"],
+            "replen_desc":"Ice blue dresses, white tiered skirts, lavender tops, snow-white basics — the Frozen colour palette applied to core girls basics. These replenish strongly in the 4 weeks around theatrical release.",
+            "moodboard_colours":["#A8D8EA","#C9B8D8","#F0F8FF","#F4C2C2","#E8F4F8","#1B3A6B"],
+            "moodboard_labels":["Ice Blue","Lavender Frost","Snow White","Powder Pink","Crystal","Midnight Winter"],
+            "print_direction":"Snowflake jacquard texture · Ice crystal micro-print · Shimmer thread knit · Tonal frost ombré · Embossed snowflake at hem · Iridescent fabric finish (no character print needed)",
+            "design_concepts":[
+                {"name":"Ice Kingdom Dress","cat":"DRESS","gender":"Girls","desc":"A-line dress in ice blue with snowflake jacquard texture at hem. No character print — pure magical aesthetic. Fully lined.","colour":"#A8D8EA","accent":"#FFFFFF"},
+                {"name":"Frost Tiered Skirt","cat":"KNIT BOTTOM","gender":"Girls","desc":"3-tier mini skirt in snow white ribbed knit with shimmer thread. Elastic waist. Magical without being costume-y.","colour":"#F0F8FF","accent":"#A8D8EA"},
+                {"name":"Lavender Magic Tee","cat":"TEE","gender":"Girls","desc":"Soft lavender cotton tee with embossed snowflake at chest. Fitted, round neck. The everyday Frozen essential.","colour":"#C9B8D8","accent":"#FFFFFF"},
+                {"name":"Crystal Sweat Dress","cat":"DRESS","gender":"Girls","desc":"Powder pink sweat-fabric dress with tonal snowflake emboss. Relaxed fit, midi length. Cosy magic.","colour":"#F4C2C2","accent":"#C9B8D8"},
+                {"name":"Winter Wonderland Coord","cat":"SWEATSHIRT","gender":"Girls","desc":"Ice blue crew neck + matching jogger set with shimmer thread detail. The holiday coord girls will live in.","colour":"#A8D8EA","accent":"#1B3A6B"},
+            ]
+        },
     }
-    selected_event=st.selectbox("Select Cultural Moment",list(EVENTS.keys()))
-    ev=EVENTS[selected_event]
-    event_card(ev["tag"],ev["when"],ev["direction"],ev["colours"],ev["mood"],ev["why_now"],ev["key_cats"],ev["key_fits"])
-    num_pan=st.slider("Styles in Pan India Capsule",5,30,20,key="pan_size")
-    all_mask=df["CAT"].isin(selected_cats)&(df["MRP/ UNIT"]>=price_range[0])&(df["MRP/ UNIT"]<=price_range[1])
-    if selected_seasons and "SEASON" in df.columns: all_mask=all_mask&df["SEASON"].isin(selected_seasons)
-    if selected_gender and "GENDER" in df.columns: all_mask=all_mask&df["GENDER"].isin(selected_gender)
-    all_rdf=df[all_mask].copy()
-    pan_matrix=all_rdf.groupby(["CAT","DES","GENDER"]).agg(Regions_Present=("REGION","nunique"),Avg_STR=("STR %","mean"),Total_Demand=("ORDER QUANTITY","sum"),Avg_MRP=("MRP/ UNIT","mean")).reset_index()
-    if "FIT_TYPE" in all_rdf.columns:
-        fit_map=all_rdf.groupby(["CAT","DES"])["FIT_TYPE"].first().reset_index()
-        pan_matrix=pan_matrix.merge(fit_map,on=["CAT","DES"],how="left")
-    pan_matrix["Pan_India_Score"]=(pan_matrix["Avg_STR"]*pan_matrix["Regions_Present"]).round(1)
-    key_cats=ev.get("key_cats",[])
-    key_fits=ev.get("key_fits",[])
-    if key_cats: pan_matrix.loc[pan_matrix["CAT"].isin([c.upper() for c in key_cats]),"Pan_India_Score"]*=1.2
-    if key_fits and "FIT_TYPE" in pan_matrix.columns: pan_matrix.loc[pan_matrix["FIT_TYPE"].isin(key_fits),"Pan_India_Score"]*=1.15
-    pan_matrix["Pan_India_Score"]=pan_matrix["Pan_India_Score"].round(1)
-    pan_matrix["Event Relevance"]=pan_matrix["CAT"].isin([c.upper() for c in key_cats]).map({True:"✅ Event Aligned",False:"⚪ General"})
-    pan_cap=pan_matrix.sort_values("Pan_India_Score",ascending=False).head(num_pan)
-    if not pan_cap.empty:
-        fig_pan=px.bar(pan_cap.sort_values("Pan_India_Score",ascending=True),x="Pan_India_Score",y="DES",color="Event Relevance",orientation="h",
-            color_discrete_map={"✅ Event Aligned":"#FFFFFF","⚪ General":"rgba(255,255,255,0.3)"},template="plotly_dark",
-            labels={"DES":"","Pan_India_Score":"Pan India Score"})
-        fig_pan.update_layout(yaxis={"categoryorder":"total ascending"},legend=dict(orientation="h",yanchor="bottom",y=1.02))
-        st.plotly_chart(benetton_fig(fig_pan),use_container_width=True)
-        st.caption("White bars = event-aligned styles (score boosted). Translucent bars = strong all-India performers included for assortment balance.")
-        pi1,pi2,pi3,pi4=st.columns(4)
-        pi1.metric("Capsule Styles",len(pan_cap))
-        pi2.metric("Avg STR %",f"{pan_cap['Avg_STR'].mean():.1f}%")
-        pi3.metric("Avg Regions Present",f"{pan_cap['Regions_Present'].mean():.1f} / {df['REGION'].nunique()}")
-        pi4.metric("Event Aligned",len(pan_cap[pan_cap["Event Relevance"]=="✅ Event Aligned"]))
-        show_pan=["CAT","DES","GENDER","Regions_Present","Avg_STR","Avg_MRP","Pan_India_Score","Event Relevance"]
-        if "FIT_TYPE" in pan_cap.columns: show_pan.insert(4,"FIT_TYPE")
-        st.dataframe(pan_cap[show_pan].rename(columns={"Regions_Present":"Regions","Avg_STR":"Avg STR %","Avg_MRP":"Avg MRP (₹)","Pan_India_Score":"Pan India Score","FIT_TYPE":"Fit Type"}),
-            column_config={"Avg STR %":st.column_config.ProgressColumn("Avg STR %",format="%.1f%%",min_value=0,max_value=100),"Avg MRP (₹)":st.column_config.NumberColumn("MRP",format="₹%d")},
-            use_container_width=True,hide_index=True)
+
+    selected_event = st.selectbox("Select Cultural Theme", list(EVENTS.keys()))
+    ev = EVENTS[selected_event]
+    event_card(ev["tag"], ev["when"], ev["direction"], ev["colours"], ev["mood"], ev["why_now"], ev["key_cats"], ev["key_fits"])
+
+    # ══════════════════════════════════════════════
+    # WGSN MOODBOARD — colour swatches + print direction
+    # ══════════════════════════════════════════════
+    st.markdown("<div style='height:16px'></div>",unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:12px;">🎨 WGSN MOODBOARD</div>""", unsafe_allow_html=True)
+
+    mb_cols = ev["moodboard_colours"]
+    mb_labs = ev["moodboard_labels"]
+    swatch_html = "<div style='display:flex;gap:14px;flex-wrap:wrap;margin:0 0 16px 0;'>"
+    for col, lab in zip(mb_cols, mb_labs):
+        r_v = int(col[1:3],16); g_v = int(col[3:5],16); b_v = int(col[5:7],16)
+        lum = (0.299*r_v + 0.587*g_v + 0.114*b_v)/255
+        border_c = "rgba(255,255,255,0.25)" if lum < 0.5 else "rgba(0,0,0,0.2)"
+        swatch_html += f"""<div style="text-align:center;">
+            <div style="width:88px;height:88px;background:{col};border-radius:14px;border:2px solid {border_c};margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+            <div style="font-size:11px;color:#FFFFFF;font-weight:600;margin-bottom:2px;">{lab}</div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:monospace;">{col.upper()}</div>
+        </div>"""
+    swatch_html += "</div>"
+    st.markdown(swatch_html, unsafe_allow_html=True)
+
+    st.markdown(f"""<div style="background:rgba(255,255,255,0.06);border-left:3px solid #FFD700;border-radius:0 10px 10px 0;padding:14px 20px;margin:0 0 28px 0;font-size:13px;color:rgba(255,255,255,0.88);line-height:1.8;">
+        <b style="color:#FFD700;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;">Print & Texture Direction</b><br><br>{ev["print_direction"]}
+    </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════
+    # CAPSULE DESIGN CONCEPTS
+    # ══════════════════════════════════════════════
+    st.markdown("""<div style="font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:12px;">👗 CAPSULE DESIGN CONCEPTS</div>""", unsafe_allow_html=True)
+    st.caption("New style concepts for this theme — brief these to the design team. Not existing stock.")
+
+    designs = ev["design_concepts"]
+    d_cols = st.columns(len(designs), gap="small")
+    for i, d in enumerate(designs):
+        with d_cols[i]:
+            r_v = int(d["colour"][1:3],16); g_v = int(d["colour"][3:5],16); b_v2 = int(d["colour"][5:7],16)
+            lum2 = (0.299*r_v + 0.587*g_v + 0.114*b_v2)/255
+            # Draw a simple garment silhouette using HTML/CSS
+            shape = "border-radius:4px 4px 0 0;" if d["cat"] in ["TEE","WOVEN TOP","SWEATSHIRT","SHIRT"] else (
+                    "border-radius:50% 50% 4px 4px;" if d["cat"] == "DRESS" else "border-radius:4px;")
+            st.markdown(f"""<div style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:16px 12px 14px;text-align:center;">
+                <div style="width:64px;height:76px;background:{d["colour"]};{shape}margin:0 auto 12px;border:2px solid {d["accent"]};position:relative;display:flex;align-items:center;justify-content:center;">
+                    <div style="width:28px;height:3px;background:{d["accent"]};border-radius:2px;opacity:0.8;"></div>
+                </div>
+                <div style="font-size:11px;font-weight:700;color:#FFFFFF;margin-bottom:4px;line-height:1.3;">{d["name"]}</div>
+                <div style="font-size:9px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">{d["cat"]} · {d["gender"]}</div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.78);line-height:1.55;text-align:left;">{d["desc"]}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════
+    # REPLENISHMENT CHART
+    # ══════════════════════════════════════════════
+    st.markdown("<div style='height:28px'></div>",unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:8px;">🔄 REPLENISHMENT PLAN</div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div style="background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.85);line-height:1.7;">
+        {ev["replen_desc"]}
+    </div>""", unsafe_allow_html=True)
+    st.caption("Basic replenishable stock only — core/basic CORE_FLAG, STR ≥ 50%, theme-relevant categories. White bar = base SS27 buy. Gold bar = extra units to stock for the theme release window (+20% uplift).")
+
+    replen_cats = [c.upper() for c in ev.get("replen_cats",[])]
+    gender_target = ev.get("gender_target","BOTH")
+
+    all_mask2 = df["CAT"].isin(selected_cats) & (df["MRP/ UNIT"] >= price_range[0]) & (df["MRP/ UNIT"] <= price_range[1])
+    if selected_seasons and "SEASON" in df.columns: all_mask2 = all_mask2 & df["SEASON"].isin(selected_seasons)
+    all_rdf2 = df[all_mask2].copy()
+
+    pan_matrix = all_rdf2.groupby(["CAT","DES","GENDER"]).agg(
+        Regions_Present=("REGION","nunique"),
+        Avg_STR=("STR %","mean"),
+        Net_Recd=("NET RECD","sum"),
+        Total_Demand=("ORDER QUANTITY","sum"),
+        Avg_MRP=("MRP/ UNIT","mean")
+    ).reset_index()
+    if "FIT_TYPE" in all_rdf2.columns:
+        fit_map2 = all_rdf2.groupby(["CAT","DES"])["FIT_TYPE"].first().reset_index()
+        pan_matrix = pan_matrix.merge(fit_map2, on=["CAT","DES"], how="left")
+    if "CORE_FLAG" in all_rdf2.columns:
+        cf_map = all_rdf2.groupby(["CAT","DES"])["CORE_FLAG"].first().reset_index()
+        pan_matrix = pan_matrix.merge(cf_map, on=["CAT","DES"], how="left")
+
+    # Replenishment filter: STR >= 50% + theme categories + gender
+    # CORE_FLAG NOT used as hard gate — STR is the quality signal
+    replen_mask = pan_matrix["Avg_STR"] >= 50
+    if replen_cats:
+        replen_mask = replen_mask & pan_matrix["CAT"].isin(replen_cats)
+    if gender_target != "BOTH" and "GENDER" in pan_matrix.columns:
+        replen_mask = replen_mask & (pan_matrix["GENDER"].str.upper() == gender_target)
+
+    replen_df = pan_matrix[replen_mask].copy()
+
+    # BASE BUY = NET RECD × growth factor (same logic as smart_buy)
+    def growth_f(s):
+        if s >= 70: return 1.4
+        elif s >= 60: return 1.2
+        elif s >= 50: return 1.1
+        elif s >= 40: return 1.0
+        else: return 0.9
+
+    replen_df["Base_Buy"] = (replen_df["Net_Recd"] * replen_df["Avg_STR"].apply(growth_f)).round(0).astype(int)
+    replen_df["Theme_Uplift_Qty"] = (replen_df["Base_Buy"] * 0.20).round(0).astype(int)
+    replen_df["Total_Replen"] = replen_df["Base_Buy"] + replen_df["Theme_Uplift_Qty"]
+    replen_df = replen_df[replen_df["Base_Buy"] > 0].sort_values("Avg_STR", ascending=False).head(20)
+
+    if not replen_df.empty:
+        fig_replen2 = px.bar(
+            replen_df.sort_values("Total_Replen", ascending=True),
+            x=["Base_Buy","Theme_Uplift_Qty"], y="DES", orientation="h",
+            template="plotly_dark", barmode="stack",
+            color_discrete_map={"Base_Buy":"rgba(255,255,255,0.5)","Theme_Uplift_Qty":"#FFD700"},
+            labels={"DES":"","value":"Units","variable":""}
+        )
+        fig_replen2.update_layout(
+            yaxis={"categoryorder":"total ascending"},
+            legend=dict(orientation="h",y=1.02,title_text=""),
+            height=max(350, len(replen_df) * 28)
+        )
+        newnames2 = {"Base_Buy":"Base SS27 Buy (NET RECD × growth)","Theme_Uplift_Qty":"Theme Window Uplift (+20%)"}
+        fig_replen2.for_each_trace(lambda t: t.update(name=newnames2.get(t.name,t.name)))
+        st.plotly_chart(benetton_fig(fig_replen2), use_container_width=True)
+
+        rp1,rp2,rp3,rp4 = st.columns(4)
+        rp1.metric("Replen Styles", len(replen_df))
+        rp2.metric("Avg STR %", f"{replen_df['Avg_STR'].mean():.1f}%")
+        rp3.metric("Base Buy Total", f"{int(replen_df['Base_Buy'].sum()):,}")
+        rp4.metric("With Theme Uplift", f"{int(replen_df['Total_Replen'].sum()):,}")
+
+        show_r = ["CAT","DES","GENDER","Avg_STR","Avg_MRP","Net_Recd","Base_Buy","Theme_Uplift_Qty","Total_Replen"]
+        if "FIT_TYPE" in replen_df.columns: show_r.insert(4,"FIT_TYPE")
+        st.dataframe(
+            replen_df[[c for c in show_r if c in replen_df.columns]].rename(columns={
+                "Avg_STR":"Avg STR %","Avg_MRP":"Avg MRP (₹)",
+                "Net_Recd":"Net Recd (Past)","Base_Buy":"Base Buy",
+                "Theme_Uplift_Qty":"+Theme Units","Total_Replen":"Total Replen ✅","FIT_TYPE":"Fit"
+            }),
+            column_config={
+                "Avg STR %":st.column_config.ProgressColumn("Avg STR %",format="%.1f%%",min_value=0,max_value=100),
+                "Avg MRP (₹)":st.column_config.NumberColumn("MRP",format="₹%d"),
+                "Net Recd (Past)":st.column_config.NumberColumn("Net Recd",format="%d"),
+                "Total Replen ✅":st.column_config.NumberColumn("Total Replen ✅",format="%d"),
+            },
+            use_container_width=True, hide_index=True
+        )
+    else:
+        warning_card("No replenishable core/basic styles found for this theme's categories. Try selecting more categories in the sidebar or check CORE_FLAG values in your data.")
+
 
 # ═══════════════════════════════════════════════════════════════
 # 12. EXPORT
